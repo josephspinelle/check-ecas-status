@@ -5,6 +5,9 @@ import smtplib
 from email.mime.text import MIMEText
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urljoin
+
+BASE_URL = "https://services3.cic.gc.ca/ecas/"
 
 SECURITY_URL = "https://services3.cic.gc.ca/ecas/security.do"
 AUTH_URL = "https://services3.cic.gc.ca/ecas/authenticate.do"
@@ -48,19 +51,28 @@ def authenticate(session: requests.Session) -> str:
     r.raise_for_status()
     return r.text
 
+def fetch_case_history(session: requests.Session, case_url: str) -> str:
+    if not case_url:
+        return "No case history link found."
 
-def extract_name_and_status(html: str) -> tuple[str, str]:
+    r = session.get(case_url, timeout=30, allow_redirects=True)
+    r.raise_for_status()
+    return r.text
+
+
+def extract_name_status_and_link(html: str) -> tuple[str, str, str]:
     soup = BeautifulSoup(html, "html.parser")
 
-    # Your snippet shows the status in a link to viewcasehistory.do
     a = soup.select_one('a[href^="viewcasehistory.do"]')
     if not a:
         Path("debug_ecas_after_auth.html").write_text(html, encoding="utf-8")
-        return ("(name not found)", "⚠️ Status not found (see debug_ecas_after_auth.html)")
+        return ("(name not found)", "⚠️ Status not found", "")
 
     status_text = a.get_text(" ", strip=True)
 
-    # Applicant name is in the first <td> of the same row
+    # Build absolute URL from relative href
+    case_url = urljoin(BASE_URL, a["href"])
+
     person_name = "(name not found)"
     tr = a.find_parent("tr")
     if tr:
@@ -68,7 +80,23 @@ def extract_name_and_status(html: str) -> tuple[str, str]:
         if tds:
             person_name = " ".join(tds[0].get_text(" ", strip=True).split())
 
-    return person_name, status_text
+    return (person_name, status_text, case_url)
+
+def parse_case_history_details(html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+
+    items = [
+        li.get_text(" ", strip=True)
+        for li in soup.select("li.mrgn-bttm-md")
+    ]
+
+    if not items:
+        # Save for debugging if structure changes
+        Path("debug_case_history.html").write_text(html, encoding="utf-8")
+        return "⚠️ No case-history bullet items found (see debug_case_history.html)"
+
+    # Format nicely for email
+    return "\n".join(f"- {text}" for text in items)
 
 
 def load_previous_status() -> str:
@@ -95,7 +123,10 @@ def main() -> None:
     accept_terms(session)
     html = authenticate(session)
 
-    person_name, status = extract_name_and_status(html)
+    person_name, status, case_url = extract_name_status_and_link(html)
+
+    case_html = fetch_case_history(session, case_url)
+    case_details = parse_case_history_details(case_html)
 
     prev = load_previous_status()
     changed = (prev != "" and status != prev)
@@ -107,9 +138,13 @@ def main() -> None:
         f"Run time: {now}",
         f"Applicant: {person_name}",
         f"Current status: {status}",
-        f"Previous status: {prev if prev else '(first run)'}",
-        f"Changed: {'YES' if changed else 'NO'}",
+        "",
+        f"Case history link: {case_url}",
+        "",
+        "Case history details:",
+        case_details,
     ])
+
 
     send_email(subject, body)
     save_current_status(status)
