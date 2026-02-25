@@ -119,7 +119,10 @@ def send_email(subject: str, body: str) -> None:
 
 
 def main() -> None:
+    import certifi
+
     session = requests.Session()
+    session.verify = certifi.where()
     accept_terms(session)
     html = authenticate(session)
 
