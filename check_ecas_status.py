@@ -30,8 +30,8 @@ ECAS_COUNTRY = os.environ.get("ECAS_COUNTRY", "207")
 ECAS_IDENTIFIER_TYPE = os.environ.get("ECAS_IDENTIFIER_TYPE", "1")
 
 # --------- Force requests to use certifi CA buncle ---------
-os.environ("SSL_CERT_FILE") = certifi.where()
-os.environ("REQUESTS_CA_BUNDLE") = certifi.where()
+os.environ["SSL_CERT_FILE"] = certifi.where()
+os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
 
 
 def accept_terms(session: requests.Session) -> None:
