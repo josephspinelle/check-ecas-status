@@ -2,6 +2,7 @@ import os
 import requests
 from bs4 import BeautifulSoup
 import smtplib
+import certifi
 from email.mime.text import MIMEText
 from datetime import datetime
 from pathlib import Path
@@ -119,7 +120,6 @@ def send_email(subject: str, body: str) -> None:
 
 
 def main() -> None:
-    import certifi
 
     session = requests.Session()
     session.verify = certifi.where()
